@@ -10,9 +10,11 @@ Run 'svmlogo -h/--help' to display the complete help
 """
 
 from svmlogo_argparse import SVMLogoArgumentParser
+from svm_model import SupportVectorModel
 from exception_handlers import sigint_handler
 from svmlogo_version import __version__
 
+from argparse import Namespace
 from time import time, sleep
 
 import sys
@@ -20,13 +22,26 @@ import os
 
 
 def parseargs_svmlogo() -> SVMLogoArgumentParser:
+    """
+    Returns an instance of SVMLogoArgumentParser configured for SVM-logo command-line arguments.
+
+    Returns:
+        SVMLogoArgumentParser: An instance of SVMLogoArgumentParser configured for SVM-logo command-line arguments.
+    """
+
     parser = SVMLogoArgumentParser(usage=__doc__, add_help=False)
     group = parser.add_argument_group("Options")
     group.add_argument("-h", "--help", action="help", help="Show this message and exit")
     group.add_argument("-v", "--version", action="version", help="Display SVM-logo version", version=__version__)
     group.add_argument("-m", "--model", type=str, metavar="SVM-model-file", dest="svm_model", required=True, help="SVM-based model file")
+    group.add_argument("--debug", action="store_true", default=False, help="Trace the full error stack")
     return parser
 
+
+def svmlogo(args: Namespace) -> None:
+    # build support vector model from input file
+    svm = SupportVectorModel(args.svm_model, args.debug)
+    print(len(svm.kmers))
 
 def main():
     try:
@@ -35,8 +50,8 @@ def main():
         if not sys.argv[1:]:  # no input args
             parser.error_noargs()  # display help and exit
             sys.exit(os.EX_USAGE)
-        args = parser.parse_args(sys.argv[1:])
-        sleep(10)
+        # construct logo
+        svmlogo(parser.parse_args(sys.argv[1:]))
     except KeyboardInterrupt as e:
         sigint_handler()  # gracefully exit when SIGINT is detected
     stop = time()
