@@ -4,6 +4,7 @@
 from exception_handlers import exception_handler
 from support_vector import SupportVector
 from utils import reverse_complement, ALPHABET
+from kmer import Kmer
 
 from itertools import takewhile
 from typing import Union, Tuple, List, Set
@@ -146,7 +147,7 @@ class SupportVectorModel():
                 e, f"SVM model loading failed ({self._model_fname})", os.EX_IOERR, self._debug
             )
 
-    def informative_kmers(self) -> None:
+    def compute_informative_kmers(self) -> None:
         if not hasattr(self, "_support_vectors"):
             exception_handler(ValueError, "Support vectors not available, cannot recover informative segments", os.EX_DATAERR, self._debug)
         kmers_dict = {}
@@ -162,7 +163,7 @@ class SupportVectorModel():
         with open(".kmers", mode="w") as outfile:
             for kmer in kmers_dict:
                 outfile.write(f">{kmer}\n{kmer}\n")
-        subprocess.run(["gkmpredict", ".kmers", self._model_fname, ".scores"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
+        subprocess.run(["gkmpredict", "-T 8", ".kmers", self._model_fname, ".scores"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
         kmers_scores = {}
         with open(".scores", mode="r") as infile:
             for line in infile:
@@ -174,11 +175,16 @@ class SupportVectorModel():
                 informative_kmers[seq][0].append(kmer)
                 informative_kmers[seq][1].append(kmers_scores[kmer])
         self._informative_kmers = [
-            informative_kmers[seq][0][informative_kmers[seq][1].index(max(informative_kmers[seq][1]))]
+            Kmer(
+                informative_kmers[seq][0][informative_kmers[seq][1].index(max(informative_kmers[seq][1]))],
+                max(informative_kmers[seq][1]),
+            )
             for seq in informative_kmers
         ]
         assert len(self._informative_kmers) == self._sv_pos
         subprocess.run(["rm", ".kmers", ".scores"])
+        # sort informative k-mers by weight
+        self._informative_kmers = sorted(self._informative_kmers, key=lambda x: x.score, reverse=True)
 
             
     def _get_support_vectors(self) -> List[SupportVector]:
@@ -195,3 +201,9 @@ class SupportVectorModel():
     def kmers(self) -> Set[str]:
         return self._get_kmers()
 
+    def _get_informative_kmers(self) -> List[Tuple[str, float]]:
+        return self._informative_kmers
+    
+    @property
+    def informative_kmers(self) -> List[Tuple[str, float]]:
+        return self._get_informative_kmers()

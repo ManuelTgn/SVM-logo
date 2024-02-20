@@ -44,8 +44,12 @@ def parseargs_svmlogo() -> SVMLogoArgumentParser:
 def svmlogo(args: Namespace) -> None:
     # build support vector model from input file
     svm = SupportVectorModel(args.svm_model, args.alphabet, args.debug)
-    svm.informative_kmers()
+    svm.compute_informative_kmers()
     print(len(svm._informative_kmers), len(set(svm._informative_kmers)))
+    # with open("kmers_res.txt", mode="w") as outfile:
+    #     for kmer in svm.informative_kmers:
+    #         outfile.write(f"{kmer[0]}\n")
+
 
 def main():
     try:
