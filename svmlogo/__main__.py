@@ -17,6 +17,8 @@ from svmlogo_version import __version__
 from argparse import Namespace
 from time import time, sleep
 
+import pandas as pd
+
 import sys
 import os
 
@@ -34,14 +36,16 @@ def parseargs_svmlogo() -> SVMLogoArgumentParser:
     group.add_argument("-h", "--help", action="help", help="Show this message and exit")
     group.add_argument("-v", "--version", action="version", help="Display SVM-logo version", version=__version__)
     group.add_argument("-m", "--model", type=str, metavar="SVM-model-file", dest="svm_model", required=True, help="SVM-based model file")
+    group.add_argument("-a", "--alphabet", type=int, metavar="ALPHABET", nargs="?", default=0, help="Support vectors alphabet. Available values: DNA = 0, RNA = 1, AMINOACID = 2 [default DNA]")
     group.add_argument("--debug", action="store_true", default=False, help="Trace the full error stack")
     return parser
 
 
 def svmlogo(args: Namespace) -> None:
     # build support vector model from input file
-    svm = SupportVectorModel(args.svm_model, args.debug)
-    print(len(svm.kmers))
+    svm = SupportVectorModel(args.svm_model, args.alphabet, args.debug)
+    svm.informative_kmers()
+    print(len(svm._informative_kmers), len(set(svm._informative_kmers)))
 
 def main():
     try:

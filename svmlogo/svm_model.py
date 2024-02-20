@@ -3,32 +3,23 @@
 
 from exception_handlers import exception_handler
 from support_vector import SupportVector
+from utils import reverse_complement, ALPHABET
 
 from itertools import takewhile
 from typing import Union, Tuple, List, Set
 
+import subprocess
 import os
 
 class SupportVectorModel():
-    def __init__(self, model_fname: str, debug: bool) -> None:
-        """
-        Initializes an instance of SVMModel.
-
-        Args:
-            model_fname (str): The file name of the SVM model.
-            debug (bool): Flag indicating whether to enable debug mode.
-
-        Raises:
-            FileNotFoundError: If the model file is not found.
-
-        Returns:
-            None
-        """
-
+    def __init__(self, model_fname: str, alphabet: int, debug: bool) -> None:
         self._debug = debug
         if not os.path.isfile(model_fname):
             exception_handler(FileNotFoundError, f"{model_fname} not found", os.EX_OSFILE, self._debug)
         self._model_fname = model_fname
+        if alphabet not in ALPHABET:
+            exception_handler(ValueError, "Unknown alphabet", os.EX_DATAERR, self._debug)
+        self._alphabet = alphabet
         # read model parameters and support vectors
         self._read_model()
 
@@ -148,17 +139,48 @@ class SupportVectorModel():
                 # read support vectors
                 for _, line in zip(range(self._sv_pos), infile):
                     weight, sequence = line.strip().split()
-                    sv = SupportVector(sequence, weight, 0, self._debug)
+                    sv = SupportVector(sequence, weight, self._alphabet, self._debug)
                     self._support_vectors.append(sv)  
-                    assert hasattr(self, "_wlen")
-                    self._kmers += sv.kmers_split(self._wlen)
-                # remove redundant kmers
-                self._kmers = list(set(self._kmers))  
         except OSError as e:
             exception_handler(
                 e, f"SVM model loading failed ({self._model_fname})", os.EX_IOERR, self._debug
             )
-        
+
+    def informative_kmers(self) -> None:
+        if not hasattr(self, "_support_vectors"):
+            exception_handler(ValueError, "Support vectors not available, cannot recover informative segments", os.EX_DATAERR, self._debug)
+        kmers_dict = {}
+        for sv in self._support_vectors:
+            for kmer in sv.kmers_split(self._wlen):
+                try:
+                    kmers_dict[kmer].append(sv.sequence)
+                except KeyError:
+                    try:
+                        kmers_dict[reverse_complement(kmer, self._alphabet)]
+                    except KeyError:
+                        kmers_dict[kmer] = [sv.sequence]
+        with open(".kmers", mode="w") as outfile:
+            for kmer in kmers_dict:
+                outfile.write(f">{kmer}\n{kmer}\n")
+        subprocess.run(["gkmpredict", ".kmers", self._model_fname, ".scores"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
+        kmers_scores = {}
+        with open(".scores", mode="r") as infile:
+            for line in infile:
+                kmer, score = line.strip().split()
+                kmers_scores[kmer] = float(score)
+        informative_kmers = {sv.sequence: ([], []) for sv in self._support_vectors}
+        for kmer in kmers_dict:
+            for seq in kmers_dict[kmer]:
+                informative_kmers[seq][0].append(kmer)
+                informative_kmers[seq][1].append(kmers_scores[kmer])
+        self._informative_kmers = [
+            informative_kmers[seq][0][informative_kmers[seq][1].index(max(informative_kmers[seq][1]))]
+            for seq in informative_kmers
+        ]
+        assert len(self._informative_kmers) == self._sv_pos
+        subprocess.run(["rm", ".kmers", ".scores"])
+
+            
     def _get_support_vectors(self) -> List[SupportVector]:
         return self._support_vectors
     
