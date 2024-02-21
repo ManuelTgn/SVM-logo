@@ -4,6 +4,10 @@
 DNA = 0
 RNA = 1
 AMINOACIDS = 2
+CENTRAL = "central"
+RIGHT = "right"
+LEFT = "left"
+
 
 OFFSET = [0, 1, 2, 3]
 

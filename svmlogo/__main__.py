@@ -52,7 +52,7 @@ def svmlogo(args: Namespace) -> None:
     #     for kmer in svm.informative_kmers:
     #         outfile.write(f"{kmer[0]}\n")
     # compute SVM-logo from input model
-    kmers = [Kmer("AGAGATAAGA", 1), Kmer("ACAGATAAGA", 1)]
+    kmers = [Kmer("AGAGATAAGA", 1), Kmer("CCCAGAGATA", 1)] # Kmer("CGAGATAAGA", 1), Kmer("AGAGATAAAC", 1)]
     # kmers = [Kmer("AGAGATAAGA", 1), Kmer("TAGAGATAAG", 1), Kmer("TCTTATCTCT", 1), Kmer("AGATAAGATT", 1)] #, Kmer("AGATAAGGAA", 1), Kmer("TTCCTTATCT", 1), Kmer("AGAGATAAGG", 1), Kmer("CCTTATCTCT", 1)]
     # kmers = [Kmer("AGAGATAAGA", 1)] * 10000
     SVMLogo(kmers, args.alphabet, args.debug)

@@ -2,7 +2,7 @@
 """
 
 from exception_handlers import exception_handler
-from utils import OFFSET, ALPHABET
+from utils import OFFSET, ALPHABET, CENTRAL, RIGHT, LEFT
 from kmer import Kmer
 
 from igraph import Graph
@@ -36,27 +36,18 @@ class Path():
         if idx < 0 or idx > len(self):
             exception_handler(IndexError, "Index out of range", os.EX_DATAERR, self._debug)
         return self._path[idx]
-
-    def _get_start(self) -> int:
-        return self._start
     
     @property
     def start(self) -> int:
-        return self._get_start()
-
-    def _get_stop(self) -> int:
-        return self._stop
+        return self._start
     
     @property
     def stop(self) -> int:
-        return self._get_stop()
-    
-    def _get_sequence(self) -> str:
-        return self._sequence
+        return self._stop
     
     @property
     def sequence(self) -> str:
-        return self._get_sequence()
+        return self._sequence
     
 
 class SVMLogo():
@@ -151,69 +142,119 @@ class SVMLogo():
             exception_handler(ValueError, f"Vertex {vid} is not available", os.EX_DATAERR, self._debug)
         return parents
     
-    def _update_labels(self, bvertices: int, bstart_vid: int, kmer: Kmer) -> None:
+    def _update_labels(self, bvertices: int, bstart_vid: int, kmer: str) -> None:
         labels = self.labels
         for i in range(bvertices):
             labels[self._largest_vid - bvertices + 1 + i] = kmer[bstart_vid + i]
         self._logo.vs["label"] = labels
 
+    def _update_weights(self, path: List[int]) -> None:
+        for i, vid in enumerate(path[:-1]):
+            self._weights[vid, path[i + 1]] += 1
 
-    def _modify_logo(self, kmer: Kmer, seqmatch: str, path: Path) -> None:
+    def _extend_bubble(self, seqmatch: str, start: int, size: int, path: List[int]) -> Tuple[int, int, List[int], int]:
+        pos = start  # start extension
+        bsize = 0  # bubble size
+        while seqmatch[pos] == "*" and pos < size:
+            bsize += 1
+            bvid = self._largest_vid + bsize  # bubble vertex id
+            self._add_vertex(bvid)  # add vertex to bubble
+            path[pos] = bvid  # update k-mer's path
+            pos += 1
+            if pos == size:  # bubble closes at k-mer's end
+                return bsize, bvid, path, pos
+        return bsize, bvid, path, pos
+    
+    def _connect_bubble(self, bsize: int) -> None:
+        for offset in range(bsize - 1):  # avoid dead link for last bubble vertex
+            bvid_parent = self._largest_vid - bsize + 1 + offset
+            bvid_child = self._largest_vid - bsize + 2 + offset
+            self._add_edge(bvid_parent, bvid_child)  # link vertices
+
+    def _anchor_bubble(self, path: Path, start: int, bsize: int) -> None:
+        parents = self._parents(path[start])  # recover bubble parents
+        bstart_vid = self._largest_vid - bsize + 1  # bubble start vertex id
+        for vid in parents:  # anchor bubble vertices to parents
+            self._add_edge(vid, bstart_vid)
+
+    def _close_bubble(self, pos: int, size: int, path_current: List[int], path: Path) -> None:
+        if pos == size:  # link the bubble to stop node
+            self._add_edge(self._largest_vid, self._stop_vid)
+            path_current[pos] = self._stop_vid  # add stop vertex to current path
+        else:  # link bubble to existing vertex
+            self._add_edge(self._largest_vid, path[pos])
+
+    def _extend_offset(self, offset: int, path: List[int], pos: int) -> Tuple[int, List[int]]:
+        for i in range(offset):
+            ovid = self._largest_vid + i + 1
+            self._add_vertex(ovid)  # add offset vertex
+            path[pos + i] = ovid  # update current path
+        return ovid, path
+    
+    def _anchor_offset(self, ovid: int, vid: int, direction: str) -> None:
+        if direction == LEFT:
+            self._add_edge(ovid, vid)
+        elif direction == RIGHT:
+            self._add_edge(vid, ovid)
+
+    def _modify_logo(self, kmer: Kmer, seqmatch: str, path: Path, offset: int, direction: str) -> None:
         size = len(seqmatch)
         path_current = [None] * (size + 1)  # track the inserted k-mer's path (include stop node) 
-        i = 0
-        while i < size:
-            if seqmatch[i] == "*":  # mismatch, open a bubble
-                bstart_pos = i  # bubble start position
-                bvertices = 0  # vertices in the current bubble
-                while seqmatch[i] == "*" and i < size:  # add vertices to bubble
-                    bvertices += 1
-                    bvid = self._largest_vid + bvertices  # bubble vertex id
-                    self._add_vertex(bvid)
-                    path_current[i] = bvid
-                    i += 1
-                self._largest_vid = bvid  # update largest vertex id
-                self._extend_weights(bvertices)  # update weights matrix
-                if bstart_pos > 0:  # link parent vertex with first bubble vertex
-                    parents = self._parents(path[bstart_pos])  # recover vertex parents
-                    bstart_vid = self._largest_vid - bvertices + 1  # bubble starting vertex id
-                    for vid in parents:
-                        self._add_edge(vid, bstart_vid)
-                        self._weights[vid, bstart_vid] += 1  # update logo and weights
-                if bvertices > 1:  # link bubble vertices
-                    for offset in range(bvertices - 1):
-                        bvid_parent = self._largest_vid - bvertices + 1 + offset
-                        bvid_child = self._largest_vid - bvertices + 2 + offset
-                        self._add_edge(bvid_parent, bvid_child)
-                        self._weights[bvid_parent, bvid_child] += 1
-                # close the bubble
-                if i == size:  # link current path to stop node
-                    self._add_edge(self._largest_vid, self._stop_vid)
-                    self._weights[self._largest_vid, self._stop_vid] += 1
-                    path_current[i] = self._stop_vid
-                else:
-                    self._add_edge(self._largest_vid, path[i])
-                    self._weights[self._largest_vid, path[i]] += 1
-                # set labels on bubble vertices
-                self._update_labels(bvertices, bstart_pos, kmer)
-            else:  # continue along the path
-                path_current[i] = path[i]
-                i += 1
-                if i == size:  # reached the end
-                    self._weights[path[i - 1], self._stop_vid] += 1
-                    path_current[-1] = self._stop_vid
-        self._add_vertex_path(path_current[0], path_current[-1], path_current, kmer.kmer)
-        
+        path_to_add = False
+        start, stop = 0, size
+        if direction == LEFT:
+            start = offset
 
+
+        if direction == LEFT:
+            self._largest_vid, path_current = self._extend_offset(offset, path_current, 0)
+            self._extend_weights(offset)
+            self._connect_bubble(offset)
+            ovid = self._largest_vid
+            start = offset
+            size -= offset            
+            path_to_add = True
+        sequence = kmer.kmer[start:]
+        seqmatch = seqmatch[start:]
+        for i, c in enumerate(seqmatch):
+            pos = i + start
+            if c == "*":  # mismatch, open a bubble
+                bstart = pos + start  # bubble start position
+                path_to_add = True  # add path since it diverges 
+                bvertices, self._largest_vid, path_current, i = self._extend_bubble(seqmatch, bstart, size, path_current)
+                self._extend_weights(bvertices)  # update weights matrix
+                if bstart > 0:  # link parent vertex with first bubble vertex
+                    self._anchor_bubble(path, bstart, bvertices)
+                if bvertices > 1:  # link bubble vertices
+                    self._connect_bubble(bvertices)
+                # close the bubble and set labels on bubble vertices
+                self._close_bubble(pos, size, path_current, path)
+                self._update_labels(bvertices, bstart, sequence)
+            else:  # match, continue along the path
+                path_current[pos] = path[pos]
+                if pos == size - 1:
+                    path_current[-1] = self._stop_vid
+        self._update_weights(path_current)  # update weights matrix
+        if path_to_add:
+            self._add_vertex_path(path_current[0], path_current[-1], path_current, kmer.kmer)
+        for e in self._logo.es:
+            print(e.tuple)
+
+    
 
 
     def _insert_kmer(self, kmer: Kmer, seqmatch: str, path: Path) -> None:
         offset = seqmatch.count("-")
-        if seqmatch[0] in ALPHABET[self._alphabet]:  # no offset
-            assert offset == 0
-            self._modify_logo(kmer, seqmatch, path)
-        for p in self._paths:
-            print(p)
+        direction = CENTRAL
+        if offset > 0:
+            direction = LEFT if seqmatch.startswith("-") else RIGHT
+        self._modify_logo(kmer, seqmatch, path, offset, direction)
+
+
+
+        # elif seqmatch[0] == "-":  # offset on the left
+        #     assert offset > 0
+        #     self._modify_logo(kmer.kmer[offset:], seqmatch[offset:], path, LEFT, offset)
 
 
         
@@ -234,16 +275,16 @@ class SVMLogo():
         for kmer in self._kmers[1:]:
             seqmatch, path = self._match_kmer(kmer)
             self._insert_kmer(kmer, seqmatch, path)
+        print(self._weights)
+        for p in self._paths:
+            print(p)
 
     def _vertex_sequence(self, vids: List[int]) -> str:
         return "".join([self.labels[vid] for vid in vids[:-1]])  # skip stop node (*) 
-        
-    def _get_labels(self) -> List[str]:
-        return self._logo.vs["label"]
     
     @property
     def labels(self) -> List[str]:
-        return self._get_labels()
+        return self._logo.vs["label"]
         
 
     
