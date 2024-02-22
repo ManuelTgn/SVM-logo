@@ -2,14 +2,18 @@
 """
 
 from exception_handlers import exception_handler
-from utils import OFFSET, ALPHABET, CENTRAL, RIGHT, LEFT
+from utils import OFFSET, ALPHABET, CENTRAL, RIGHT, LEFT, PALETTE, reverse_complement
 from kmer import Kmer
+from svmlogo_version import __version__
 
+from tqdm import tqdm
+from io import TextIOWrapper
 from igraph import Graph
-from typing import List, Tuple
+from typing import List, Tuple, Union, Dict
 
 import numpy as np
 
+import datetime
 import os
 
 class Path():
@@ -30,13 +34,15 @@ class Path():
     def __str__(self) -> str:
         return "-".join(list(map(str, self._path)))
     
-    def __getitem__(self, idx: int) -> int:
-        if not isinstance(idx, int):
-            exception_handler(TypeError, f"Index must be integers, not {type(idx).__name__}", os.EX_DATAERR, self._debug)
-        if idx < 0 or idx > len(self):
+    def __getitem__(self, idx: Union[int, slice]) -> int:
+        if isinstance(idx, int):
+            if 0 <= idx < len(self):
+                return self._path[idx]
             exception_handler(IndexError, "Index out of range", os.EX_DATAERR, self._debug)
-        return self._path[idx]
-    
+        elif isinstance(idx, slice):
+            return self._path[idx.start:idx.stop:idx.step]
+        exception_handler(TypeError, f"Index must be {int.__name__} or {slice.__name__}, not {type(idx).__name__}", os.EX_DATAERR, self._debug)
+            
     @property
     def start(self) -> int:
         return self._start
@@ -55,6 +61,7 @@ class SVMLogo():
         self._kmers = kmers
         self._debug = debug
         self._alphabet = alphabet
+        self._size = len(self._kmers)
         # construct SVM-logo via greedy procedure
         self._construct_alignment_greedy()
 
@@ -64,7 +71,6 @@ class SVMLogo():
             self._paths = [p]
         else:
             self._paths.append(p)
-        
 
     def _initialize_graph_logo(self, pivot: str) -> None:
         self._logo = Graph().as_directed()
@@ -104,8 +110,7 @@ class SVMLogo():
             if m > matches:
                 matches, seqmatch, pathmatch = m, s, p
         assert matches >= 0 and seqmatch is not None and pathmatch is not None
-        print(kmer.kmer, seqmatch, matches, pathmatch)
-        return seqmatch, pathmatch
+        return seqmatch, pathmatch, matches
 
     def _align_kmer(self, seq1: str, seq2: str) -> Tuple[int, str]:
         matches_counter_right = [self._count_matches(seq1, seq2, start) for start in OFFSET]
@@ -183,43 +188,25 @@ class SVMLogo():
             path_current[pos] = self._stop_vid  # add stop vertex to current path
         else:  # link bubble to existing vertex
             self._add_edge(self._largest_vid, path[pos])
+            path_current[pos] = path[pos]
+        return path_current
 
-    def _extend_offset(self, offset: int, path: List[int], pos: int) -> Tuple[int, List[int]]:
-        for i in range(offset):
-            ovid = self._largest_vid + i + 1
-            self._add_vertex(ovid)  # add offset vertex
-            path[pos + i] = ovid  # update current path
-        return ovid, path
-    
-    def _anchor_offset(self, ovid: int, vid: int, direction: str) -> None:
-        if direction == LEFT:
-            self._add_edge(ovid, vid)
-        elif direction == RIGHT:
-            self._add_edge(vid, ovid)
-
-    def _modify_logo(self, kmer: Kmer, seqmatch: str, path: Path, offset: int, direction: str) -> None:
-        size = len(seqmatch)
+    def _modify_logo(self, sequence: str, seqmatch: str, path: Path, offset: int, direction: str) -> None:
+        size = len(seqmatch) - offset
         path_current = [None] * (size + 1)  # track the inserted k-mer's path (include stop node) 
         path_to_add = False
-        start, stop = 0, size
-        if direction == LEFT:
-            start = offset
-
-
-        if direction == LEFT:
-            self._largest_vid, path_current = self._extend_offset(offset, path_current, 0)
-            self._extend_weights(offset)
-            self._connect_bubble(offset)
-            ovid = self._largest_vid
-            start = offset
-            size -= offset            
-            path_to_add = True
-        sequence = kmer.kmer[start:]
-        seqmatch = seqmatch[start:]
-        for i, c in enumerate(seqmatch):
-            pos = i + start
+        if direction == LEFT:  # k-mer aligned with offset on the left
+            sequence = sequence[offset:]
+            seqmatch = seqmatch[offset:]
+        if direction == RIGHT:  # k-mer aligned with offset on the right
+            sequence = sequence[:size]
+            seqmatch = seqmatch[:size]
+            path = path[offset:]
+        i = 0 
+        while i < size:
+            c = seqmatch[i]
             if c == "*":  # mismatch, open a bubble
-                bstart = pos + start  # bubble start position
+                bstart = i # bubble start position
                 path_to_add = True  # add path since it diverges 
                 bvertices, self._largest_vid, path_current, i = self._extend_bubble(seqmatch, bstart, size, path_current)
                 self._extend_weights(bvertices)  # update weights matrix
@@ -228,17 +215,20 @@ class SVMLogo():
                 if bvertices > 1:  # link bubble vertices
                     self._connect_bubble(bvertices)
                 # close the bubble and set labels on bubble vertices
-                self._close_bubble(pos, size, path_current, path)
+                path_current = self._close_bubble(i, size, path_current, path)
                 self._update_labels(bvertices, bstart, sequence)
             else:  # match, continue along the path
-                path_current[pos] = path[pos]
-                if pos == size - 1:
-                    path_current[-1] = self._stop_vid
+                path_current[i] = path[i]
+            if i == size - 1:
+                path_current[-1] = self._stop_vid
+            i += 1
+        try:
+            assert all(v is not None for v in path_current)
+        except:
+            raise AssertionError
         self._update_weights(path_current)  # update weights matrix
-        if path_to_add:
-            self._add_vertex_path(path_current[0], path_current[-1], path_current, kmer.kmer)
-        for e in self._logo.es:
-            print(e.tuple)
+        if path_to_add and direction == CENTRAL:
+            self._add_vertex_path(path_current[0], path_current[-1], path_current, sequence)
 
     
 
@@ -248,17 +238,7 @@ class SVMLogo():
         direction = CENTRAL
         if offset > 0:
             direction = LEFT if seqmatch.startswith("-") else RIGHT
-        self._modify_logo(kmer, seqmatch, path, offset, direction)
-
-
-
-        # elif seqmatch[0] == "-":  # offset on the left
-        #     assert offset > 0
-        #     self._modify_logo(kmer.kmer[offset:], seqmatch[offset:], path, LEFT, offset)
-
-
-        
-            
+        self._modify_logo(kmer.kmer, seqmatch, path, offset, direction)
 
 
     def _construct_alignment_greedy(self) -> None:
@@ -272,16 +252,68 @@ class SVMLogo():
         self._stop_vid = len(pivot)
         self._largest_vid = self._stop_vid  
         # align kmers to current logo
-        for kmer in self._kmers[1:]:
-            seqmatch, path = self._match_kmer(kmer)
+        for kmer in tqdm(self._kmers[1:]):
+            seqmatch, path, matches = self._match_kmer(kmer)
+            if matches < len(kmer):
+                kmer_rc = Kmer(reverse_complement(kmer.kmer, self._alphabet), kmer.score)
+                seqmatch_rc, path_rc, matches_rc = self._match_kmer(kmer_rc)
+                if matches < matches_rc:
+                    seqmatch, path, kmer = seqmatch_rc, path_rc, kmer_rc
+            # print(seqmatch)
             self._insert_kmer(kmer, seqmatch, path)
-        print(self._weights)
-        for p in self._paths:
-            print(p)
-
-    def _vertex_sequence(self, vids: List[int]) -> str:
-        return "".join([self.labels[vid] for vid in vids[:-1]])  # skip stop node (*) 
+        # for p in self._paths:
+        #     print(p)
+        # print(self.vertices)
     
+
+    def _write_dot(self, logofile: str) -> str:
+        palette = PALETTE[self._alphabet]  # current logo color palette
+        with open(logofile, mode="w") as outfile:
+            self._logo_file_content(outfile, palette)
+        assert os.stat(logofile).st_size > 0
+        return logofile
+
+    def _logo_file_content(self, outfile: TextIOWrapper, palette: Dict[str, str]):
+        # write file header comment
+        outfile.write(f"/* SVM-Logo v{__version__} -- logo {outfile} created on {datetime.datetime.now()} */")
+        if not self._logo.is_dag():
+            exception_handler(ValueError, "Unsolvable logo", os.EX_DATAERR, self._debug)
+        # ---> start data writing <---
+        outfile.write("digraph {\n\trankdir=\"LR\"\n")  # horizontal ranking orientation
+        for i, vid in enumerate(self.vertices):
+            label = self.labels[i]
+            color = palette[label]  # color logo letters
+            # TODO: set fontsize according to RE
+            # fontsize = 20 
+            vertex_attributes = (
+                f"\t{vid} [\n\t\tname={vid}\n\t\tname={vid}\n"
+                f"\t\tlabel=\"{label}\"\n\t\tstyle=filled\n"
+                f"\t\tcolor=\"white\"\n\t\tfontcolor=\"{color}\"\n"
+                f"\t\tfontname=\"Arial\"\n\t\tfontsize=20\n\t];\n"  # set font style
+            )   # close letter field
+            outfile.write(vertex_attributes)
+        for e in self.edges:
+            start, stop = e
+            # TODO: set edge weight according to RE
+            # weight = 5
+            outfile.write(f"\t{start} -> {stop} [penwidth=5];\n")  # close edge field
+        outfile.write("}\n")  # close logo file
+
+
+
+    def display(self, outfile: str):
+        logofile = self._write_dot(outfile)
+
+
+
+    @property
+    def vertices(self) -> List[int]:
+        return self._logo.vs.indices
+
+    @property
+    def edges(self) -> List[Tuple[int, int]]:
+        return [e.tuple for e in self._logo.es]
+
     @property
     def labels(self) -> List[str]:
         return self._logo.vs["label"]

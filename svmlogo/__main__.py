@@ -39,6 +39,7 @@ def parseargs_svmlogo() -> SVMLogoArgumentParser:
     group.add_argument("-v", "--version", action="version", help="Display SVM-logo version", version=__version__)
     group.add_argument("-m", "--model", type=str, metavar="SVM-model-file", dest="svm_model", required=True, help="SVM-based model file")
     group.add_argument("-a", "--alphabet", type=int, metavar="ALPHABET", nargs="?", default=0, help="Support vectors alphabet. Available values: DNA = 0, RNA = 1, AMINOACID = 2 [default DNA]")
+    group.add_argument("-o", "--outfile", type=str, metavar="OUTFILE", required=True, help="Output logo file name")
     group.add_argument("--debug", action="store_true", default=False, help="Trace the full error stack")
     return parser
 
@@ -48,14 +49,17 @@ def svmlogo(args: Namespace) -> None:
     # svm = SupportVectorModel(args.svm_model, args.alphabet, args.debug)
     # svm.compute_informative_kmers()
     # print(len(svm._informative_kmers), len(set(svm._informative_kmers)))
-    # with open("kmers_res.txt", mode="w") as outfile:
+    # with open("kmers_100.txt", mode="w") as outfile:
     #     for kmer in svm.informative_kmers:
     #         outfile.write(f"{kmer[0]}\n")
     # compute SVM-logo from input model
-    kmers = [Kmer("AGAGATAAGA", 1), Kmer("CCCAGAGATA", 1)] # Kmer("CGAGATAAGA", 1), Kmer("AGAGATAAAC", 1)]
-    # kmers = [Kmer("AGAGATAAGA", 1), Kmer("TAGAGATAAG", 1), Kmer("TCTTATCTCT", 1), Kmer("AGATAAGATT", 1)] #, Kmer("AGATAAGGAA", 1), Kmer("TTCCTTATCT", 1), Kmer("AGAGATAAGG", 1), Kmer("CCTTATCTCT", 1)]
+    # kmers = [Kmer("AGAGATAAGA", 1), Kmer("CAGAGCTATG", 1)] #, Kmer("GATAAGACCC", 1),  Kmer("CGAGATAAGA", 1), Kmer("AGAGATAAAC", 1)]
+    # kmers = [Kmer("AGAGATAAGA", 1), Kmer("TAGAGATAAG", 1), Kmer("TCTTATCTCT", 1), Kmer("AGATAAGATT", 1), Kmer("AGATAAGGAA", 1), Kmer("TTCCTTATCT", 1), Kmer("AGAGATAAGG", 1), Kmer("CCTTATCTCT", 1)]
     # kmers = [Kmer("AGAGATAAGA", 1)] * 10000
-    SVMLogo(kmers, args.alphabet, args.debug)
+    with open("kmers_res.txt", mode="r") as infile:
+        kmers = [Kmer(line.strip(), 1) for line in infile]
+    logo = SVMLogo(kmers, args.alphabet, args.debug)
+    logo.display(args.outfile)  # display logo
 
 def main():
     try:

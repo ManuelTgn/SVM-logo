@@ -21,6 +21,10 @@ RC = {
     RNA: {"A": "U", "C": "G", "G": "C", "U": "A", "N": "N"}
 }
 
+PALETTE = {
+    DNA: {"A": "#109648", "C": "#255c99", "G": "#f7b32b", "T": "#d62839", "*": "black",},
+}
+
 def reverse_complement(sequence: str, alphabet: int) -> str:
     """
     Returns the reverse complement of the given sequence.
