@@ -22,7 +22,7 @@ RC = {
 }
 
 PALETTE = {
-    DNA: {"A": "#109648", "C": "#255c99", "G": "#f7b32b", "T": "#d62839", "*": "black",},
+    DNA: {"A": "#109648", "C": "#255c99", "G": "#f7b32b", "T": "#d62839", "N": "#a7a5a4", "*": "black",},
 }
 
 def reverse_complement(sequence: str, alphabet: int) -> str:

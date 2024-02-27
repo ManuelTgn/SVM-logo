@@ -58,7 +58,7 @@ def svmlogo(args: Namespace) -> None:
     # kmers = [Kmer("AGAGATAAGA", 1)] * 10000
     with open("kmers_res.txt", mode="r") as infile:
         kmers = [Kmer(line.strip(), 1) for line in infile]
-    logo = SVMLogo(kmers, args.alphabet, args.debug)
+    logo = SVMLogo(kmers, 12, args.alphabet, args.debug)
     logo.display(args.outfile)  # display logo
 
 def main():

@@ -186,24 +186,19 @@ class SupportVectorModel():
         # sort informative k-mers by weight
         self._informative_kmers = sorted(self._informative_kmers, key=lambda x: x.score, reverse=True)
 
-            
-    def _get_support_vectors(self) -> List[SupportVector]:
+    @property
+    def support_vectors(self) -> List[SupportVector]:
         return self._support_vectors
     
     @property
-    def support_vectors(self) -> List[SupportVector]:
-        return self._get_support_vectors()
-    
-    def _get_kmers(self) -> Set[str]:
+    def kmers(self) -> Set[str]:
         return self._kmers
     
     @property
-    def kmers(self) -> Set[str]:
-        return self._get_kmers()
-
-    def _get_informative_kmers(self) -> List[Tuple[str, float]]:
+    def informative_kmers(self) -> List[Tuple[str, float]]:
         return self._informative_kmers
     
     @property
-    def informative_kmers(self) -> List[Tuple[str, float]]:
-        return self._get_informative_kmers()
+    def wlen(self) -> int:
+        assert hasattr(self, "_wlen")
+        return self._wlen

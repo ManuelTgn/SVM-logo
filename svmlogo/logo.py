@@ -13,6 +13,7 @@ from typing import List, Tuple, Union, Dict
 
 import numpy as np
 
+import itertools
 import datetime
 import os
 
@@ -57,11 +58,12 @@ class Path():
     
 
 class SVMLogo():
-    def __init__(self, kmers: List[Kmer], alphabet: int, debug: bool) -> None:
+    def __init__(self, kmers: List[Kmer], motifsize: int, alphabet: int, debug: bool) -> None:
         self._kmers = kmers
         self._debug = debug
         self._alphabet = alphabet
         self._size = len(self._kmers)
+        self._motifsize = motifsize
         # construct SVM-logo via greedy procedure
         self._construct_alignment_greedy()
 
@@ -74,19 +76,42 @@ class SVMLogo():
 
     def _initialize_graph_logo(self, pivot: str) -> None:
         self._logo = Graph().as_directed()
-        size = len(pivot) + 1
-        for vid in range(size):  # add stop vertex
+        offset = max(OFFSET)
+        size = self._motifsize + (offset * 2)
+        alphabet_size = len(ALPHABET[self._alphabet])
+        for vid in range(size * alphabet_size):
             self._add_vertex(vid)
-        self._logo.vs["label"] = list(f"{pivot}*")  # add labels to the graph
-        nodes = list(range(size))  # pivot sequence path
-        self._add_vertex_path(0, size - 1, nodes, f"{pivot}")  # initialize logo paths 
+        for layer, i, j in itertools.product(range(size - 1), range(alphabet_size), range(alphabet_size)):
+            self._add_edge(i + (alphabet_size * layer), j + (alphabet_size * (layer + 1)))
+        # add stop node and connect it to last logo layer
+        self._stop_vid = size * alphabet_size
+        self._add_vertex(self._stop_vid)
+        # connect last layer and each right offset layer to stop node
+        for layer, i in itertools.product(range(size - offset - 1, size), range(alphabet_size)):
+            self._add_edge((alphabet_size * (layer)) + i, self._stop_vid)
+        self._logo.vs["label"] = ALPHABET[self._alphabet] * size + ["*"]
+        self._start_vid = alphabet_size * offset
+
+
+
+        # self._add_vertex(size * len(ALPHABET[self._alphabet]))
+
+
+
+
+
+        # size = len(pivot) + 1
+        # for vid in range(size):  # add stop vertex
+        #     self._add_vertex(vid)
+        # self._logo.vs["label"] = list(f"{pivot}*")  # add labels to the graph
+        # nodes = list(range(size))  # pivot sequence path
+        # self._add_vertex_path(0, size - 1, nodes, f"{pivot}")  # initialize logo paths 
 
     def _initialize_weight_matrix(self, pivot: str) -> None:
-        size = len(pivot) + 1  # motif size
+        if len(pivot) != self._motifsize:
+            exception_handler(ValueError, "Mismatching logo and k-mer length", os.EX_DATAERR, self._debug)
+        size = ((self._motifsize + (max(OFFSET) * 2)) * len(ALPHABET[self._alphabet])) + 1
         self._weights = np.zeros((size, size))
-        for vid in range(1, size):
-            self._add_edge(vid - 1, vid)  # add consecutive edges for pivot
-            self._weights[vid - 1, vid] += 1
 
     def _add_vertex(self, vid: int) -> None:
         if vid in self._logo.vs.indices:
@@ -248,19 +273,20 @@ class SVMLogo():
         self._initialize_graph_logo(pivot)
         # initialize weights matrix
         self._initialize_weight_matrix(pivot)
-        # store current largest vertex id and stop node
-        self._stop_vid = len(pivot)
-        self._largest_vid = self._stop_vid  
-        # align kmers to current logo
-        for kmer in tqdm(self._kmers[1:]):
-            seqmatch, path, matches = self._match_kmer(kmer)
-            if matches < len(kmer):
-                kmer_rc = Kmer(reverse_complement(kmer.kmer, self._alphabet), kmer.score)
-                seqmatch_rc, path_rc, matches_rc = self._match_kmer(kmer_rc)
-                if matches < matches_rc:
-                    seqmatch, path, kmer = seqmatch_rc, path_rc, kmer_rc
-            # print(seqmatch)
-            self._insert_kmer(kmer, seqmatch, path)
+        print(self._weights.shape)
+        # # store current largest vertex id and stop node
+        # self._stop_vid = len(pivot)
+        # self._largest_vid = self._stop_vid  
+        # # align kmers to current logo
+        # for kmer in tqdm(self._kmers[1:]):
+        #     seqmatch, path, matches = self._match_kmer(kmer)
+        #     if matches < len(kmer):
+        #         kmer_rc = Kmer(reverse_complement(kmer.kmer, self._alphabet), kmer.score)
+        #         seqmatch_rc, path_rc, matches_rc = self._match_kmer(kmer_rc)
+        #         if matches < matches_rc:
+        #             seqmatch, path, kmer = seqmatch_rc, path_rc, kmer_rc
+        #     # print(seqmatch)
+        #     self._insert_kmer(kmer, seqmatch, path)
         # for p in self._paths:
         #     print(p)
         # print(self.vertices)
@@ -296,7 +322,7 @@ class SVMLogo():
             start, stop = e
             # TODO: set edge weight according to RE
             # weight = 5
-            outfile.write(f"\t{start} -> {stop} [penwidth=5];\n")  # close edge field
+            outfile.write(f"\t{start} -> {stop} [penwidth=1];\n")  # close edge field
         outfile.write("}\n")  # close logo file
 
 
