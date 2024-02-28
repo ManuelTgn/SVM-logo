@@ -16,14 +16,27 @@ ALPHABET = {
     RNA: ["A", "C", "G", "U", "N"],
 }
 
+ALPHABETMAP = {
+    DNA: {"A": 0, "C": 1, "G": 2, "T": 3, "N": 4},
+    RNA: {"A": 0, "C": 1, "G": 2, "U": 3, "N": 4},
+}
+
 RC = {
     DNA: {"A": "T", "C": "G", "G": "C", "T": "A", "N": "N"},
-    RNA: {"A": "U", "C": "G", "G": "C", "U": "A", "N": "N"}
+    RNA: {"A": "U", "C": "G", "G": "C", "U": "A", "N": "N"},
 }
 
 PALETTE = {
-    DNA: {"A": "#109648", "C": "#255c99", "G": "#f7b32b", "T": "#d62839", "N": "#a7a5a4", "*": "black",},
+    DNA: {
+        "A": "#109648",
+        "C": "#255c99",
+        "G": "#f7b32b",
+        "T": "#d62839",
+        "N": "#a7a5a4",
+        "*": "black",
+    },
 }
+
 
 def reverse_complement(sequence: str, alphabet: int) -> str:
     """
@@ -38,5 +51,3 @@ def reverse_complement(sequence: str, alphabet: int) -> str:
     """
 
     return "".join([RC[alphabet][nt] for nt in sequence[::-1]])
-
-
