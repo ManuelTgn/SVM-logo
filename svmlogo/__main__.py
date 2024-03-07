@@ -95,7 +95,7 @@ def svmlogo(args: Namespace) -> None:
             for fields in [line.strip().split()]
         ]
     logo = SVMLogo(kmers, 12, 0.1, args.alphabet, args.debug)
-    logo.display(args.outfile)  # display logo
+    logo.display(args.outfile, True)  # display logo
 
 
 def main():

@@ -51,3 +51,24 @@ def reverse_complement(sequence: str, alphabet: int) -> str:
     """
 
     return "".join([RC[alphabet][nt] for nt in sequence[::-1]])
+
+
+def transform(
+    x: float, lowbound: int, upbound: int, maxval: float, minval: float
+) -> int:
+    """
+    Transforms a float value within a given range to an integer value within another range.
+
+    Args:
+        x: The float value to be transformed.
+        lowbound: The lower bound of the target integer range.
+        upbound: The upper bound of the target integer range.
+        maxval: The maximum value of the input float range.
+        minval: The minimum value of the input float range.
+
+    Returns:
+        int: The transformed integer value.
+
+    """
+
+    return int(((x - minval) / (maxval - minval)) * (upbound - lowbound) + lowbound)
